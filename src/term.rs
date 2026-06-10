@@ -61,6 +61,22 @@ impl Grid {
         }
     }
 
+    /// Resize the screen, e.g. when the window changes size. Existing
+    /// content is kept where it still fits; the cursor is clamped.
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        if rows == self.rows && cols == self.cols {
+            return;
+        }
+        for row in &mut self.cells {
+            row.resize(cols, Cell::default());
+        }
+        self.cells.resize(rows, vec![Cell::default(); cols]);
+        self.rows = rows;
+        self.cols = cols;
+        self.cursor.0 = self.cursor.0.min(rows - 1);
+        self.cursor.1 = self.cursor.1.min(cols);
+    }
+
     fn blank(&self) -> Cell {
         Cell { ch: ' ', style: Style { bg: self.pen.bg, ..Style::default() } }
     }
@@ -188,6 +204,7 @@ impl Grid {
 
     /// Plain-text dump of the screen contents, trailing blanks trimmed.
     /// Useful for debugging and for an agent to "read" the screen.
+    #[allow(dead_code)] // used by tests today; part of the model's API
     pub fn to_text(&self) -> String {
         let mut lines: Vec<String> = self
             .cells

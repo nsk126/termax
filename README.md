@@ -1,52 +1,53 @@
 # termax
 
-A minimal terminal emulator core in Rust — the foundation to build a full
-emulator on.
+A minimal standalone terminal emulator in Rust: it opens its own window,
+runs your shell on a PTY, and draws the screen itself.
 
-## What it does
-
-It spawns a shell on a pseudo-terminal (PTY) and does two things with every
-byte the shell emits:
-
-1. Passes it through to your current terminal, so the session is fully
-   interactive today.
-2. Feeds it through a VT escape-sequence parser into an in-memory screen
-   model (`Grid`): a 2D array of styled cells plus a cursor.
+## How it works
 
 ```
-stdin ──────────────► pty master ──► shell (child on pty slave)
-stdout ◄── passthrough ◄── pty master output
-                             │
-                             └──► vte::Parser ──► term::Grid (screen model)
+key events ──► gui (egui window) ──► pty master ──► shell (child on pty slave)
+screen     ◄── gui draws the Grid ◄── vte::Parser ◄── pty master output
 ```
 
-This is the same architecture Alacritty and WezTerm use. The screen model is
-renderer-agnostic: replacing the passthrough with a GPU front end (wgpu,
-egui, ...) that draws `Grid::cells` each frame turns this into a standalone
-GUI terminal. On exit it prints the final grid state to show the model
-tracked the session.
+Every byte the shell emits is fed through a VT escape-sequence parser into
+an in-memory screen model (`Grid`): a 2D array of styled cells plus a
+cursor. The egui front end draws that grid each frame and encodes key
+presses (text, Ctrl-chars, arrows, ...) into the bytes a terminal sends.
+This split — I/O, screen model, renderer — is the same architecture
+Alacritty and WezTerm use, and the model stays renderer-agnostic: any
+front end only needs `Grid::cells` and `Grid::cursor`.
 
 ## Layout
 
-- `src/main.rs` — PTY setup (`portable-pty`), raw-mode stdin, the two I/O
-  pump threads.
+- `src/main.rs` — wiring: PTY setup (`portable-pty`), shell spawn, the
+  reader thread that pumps PTY output through the parser into the grid.
 - `src/term.rs` — `Grid` screen model and the `vte::Perform` implementation:
   printing, line discipline, cursor movement (CUP/CUU/CUD/...), erase
-  (ED/EL), SGR colors (16/256/truecolor), alternate screen tracking.
+  (ED/EL), SGR colors (16/256/truecolor), alternate screen tracking, resize.
+- `src/gui.rs` — the egui front end: grid rendering (styled runs, block
+  cursor, xterm 256-color palette), key-to-bytes encoding, window-resize
+  to PTY-resize propagation.
 
 ## Usage
 
 ```sh
-cargo run                 # run your $SHELL inside termax
-cargo run -- ls --color   # run a one-off command
+cargo run                 # open a termax window running your $SHELL
+cargo run -- htop         # run a one-off command instead
 cargo test                # unit tests for the screen model
 ```
 
+Or build with `cargo build --release` and launch `target/release/termax`
+directly — from a file manager, a launcher, or another terminal.
+
 ## Where to take it next
 
-- Resize handling: catch `SIGWINCH`, call `master.resize()` and rebuild the grid.
-- Scrollback: keep rows pushed off the top of the grid instead of dropping them.
-- A real renderer: `winit` + `wgpu` (or `egui`) drawing the grid with a
-  monospace font atlas — at that point the passthrough goes away.
+- Scrollback: keep rows pushed off the top of the grid instead of dropping
+  them, plus mouse-wheel scrolling.
+- Selection and clipboard copy (paste already works).
+- A real font stack: a configurable monospace font with bold/italic faces
+  and wide-glyph (CJK, emoji) handling.
 - More escape sequences: insert/delete line (IL/DL), scroll regions
   (DECSTBM), cursor save/restore, OSC window title.
+- A proper alternate screen: a second grid swapped in/out, restoring the
+  primary screen on exit (vim/less currently draw into the same grid).

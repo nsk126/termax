@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 portable-pty = "0.9"
 vte = "0.13"
-libc = "0.2"
+eframe = "0.34.3"
