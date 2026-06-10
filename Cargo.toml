@@ -1,0 +1,9 @@
+[package]
+name = "termax"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+portable-pty = "0.9"
+vte = "0.13"
+libc = "0.2"
